@@ -1,0 +1,10 @@
+pandas<2.0.0
+numpy==1.23.5
+matplotlib 
+seaborn 
+jupyter
+scikit-learn
+xverse
+mlflow  
+pytest  
+scipy
