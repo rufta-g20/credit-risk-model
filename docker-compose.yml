@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  credit_risk_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: credit_risk_api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Optional: Keep the logs/mlruns mapped for debugging, but not strictly required
+      - ./src:/app/src
+      - ./mlruns:/app/mlruns
+    restart: unless-stopped

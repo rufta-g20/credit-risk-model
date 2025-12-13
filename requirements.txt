@@ -8,3 +8,6 @@ xverse
 mlflow  
 pytest  
 scipy
+fastapi
+uvicorn
+black
