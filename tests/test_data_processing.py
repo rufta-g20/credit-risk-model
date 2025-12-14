@@ -83,30 +83,31 @@ def test_target_column_existence(dummy_data):
         required_column in processed_df.columns
     ), f"Expected column '{required_column}' not found in processed data."
 
+
 def test_rfm_aggregator_handles_single_transactions():
     """
     Test for code robustness: Ensures customers with only one transaction
     correctly get M_Debit_Std (Standard Deviation) imputed to 0, which
     is a key step in data preparation.
     """
-    # Arrange: Mock data where CUST102 has only one transaction. 
+    # Arrange: Mock data where CUST102 has only one transaction.
     # Must now include CUST103 to satisfy n_clusters=3 constraint.
     mock_data = pd.DataFrame(
         {
-            "TransactionId": [1, 2, 3, 4], # Added transaction 4
+            "TransactionId": [1, 2, 3, 4],  # Added transaction 4
             "CustomerId": [
                 "CUST101",
                 "CUST102",
                 "CUST101",
-                "CUST103", # New unique customer
-            ],  
+                "CUST103",  # New unique customer
+            ],
             "TransactionStartTime": [
                 "2019-02-13 12:00:00",
                 "2019-02-13 12:00:00",
                 "2019-02-12 12:00:00",
-                "2019-02-11 12:00:00", # New transaction time
+                "2019-02-11 12:00:00",  # New transaction time
             ],
-            "Amount": [500.0, 1000.0, 100.0, 2000.0], # Added amount for CUST103
+            "Amount": [500.0, 1000.0, 100.0, 2000.0],  # Added amount for CUST103
             "ChannelId": ["APP", "WEB", "APP", "WEB"],
             "ProductCategory": ["P1", "P2", "P1", "P3"],
         }
@@ -115,10 +116,12 @@ def test_rfm_aggregator_handles_single_transactions():
     # ... rest of the test code remains the same ...
     aggregator = RFMAggregator()
     rfm_df = aggregator.transform(mock_data)
-    
+
     # Check 1: Shape is 3 unique customers
-    assert rfm_df.shape[0] == 3 
-    
+    assert rfm_df.shape[0] == 3
+
     # Check 2: M_Debit_Std for single transaction customers is 0.0
-    assert rfm_df.loc['CUST102', 'M_Debit_Std'] == 0.0
-    assert rfm_df.loc['CUST103', 'M_Debit_Std'] == 0.0 # CUST103 is also a single-transaction customer
+    assert rfm_df.loc["CUST102", "M_Debit_Std"] == 0.0
+    assert (
+        rfm_df.loc["CUST103", "M_Debit_Std"] == 0.0
+    )  # CUST103 is also a single-transaction customer
