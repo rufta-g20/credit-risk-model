@@ -20,7 +20,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+          # Removed cache: 'pip' to force fresh install of dependencies
+          # which ensures pandas==1.5.3 is installed correctly.
 
       - name: Install dependencies
         run: |
