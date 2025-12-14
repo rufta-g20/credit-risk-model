@@ -1,4 +1,4 @@
-pandas<2.0.0
+pandas==1.5.3  # Pinned for xverse compatibility
 numpy==1.23.5
 matplotlib 
 seaborn 
