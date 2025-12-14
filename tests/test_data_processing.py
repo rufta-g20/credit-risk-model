@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import pytest
 from src.data_processing import create_full_pipeline
+from src.data_processing import RFMAggregator
 
 # Define a fixture with a larger, more diverse dataset (10 customers, 30 transactions)
 @pytest.fixture
@@ -57,3 +58,32 @@ def test_target_column_existence(dummy_data):
     
     # Assert
     assert required_column in processed_df.columns, f"Expected column '{required_column}' not found in processed data."
+
+def test_rfm_aggregator_handles_single_transactions():
+    """
+    Test for code robustness: Ensures customers with only one transaction 
+    correctly get M_Debit_Std (Standard Deviation) imputed to 0, which 
+    is a key step in data preparation.
+    """
+    # Arrange: Mock data where Customer CUST102 has only one transaction.
+    mock_data = pd.DataFrame({
+        'TransactionId': [1, 2, 3],
+        'CustomerId': ['CUST101', 'CUST102', 'CUST101'], # CUST102 is the single-transaction customer
+        'TransactionStartTime': ['2019-02-13 12:00:00', '2019-02-13 12:00:00', '2019-02-12 12:00:00'],
+        'Amount': [500.0, 1000.0, 100.0], # CUST102 Debit amount is 1000.0
+        'ChannelId': ['APP', 'WEB', 'APP'],
+        'ProductCategory': ['P1', 'P2', 'P1']
+    })
+    
+    # Instantiate the custom transformer
+    aggregator = RFMAggregator()
+    
+    # Act: Transform the raw data to RFM features
+    rfm_df = aggregator.transform(mock_data)
+    
+    # Assert
+    # 1. Check the overall shape (2 unique customers)
+    assert rfm_df.shape[0] == 2
+    
+    # 2. Check that the standard deviation for the single-transaction customer (CUST102) is 0
+    assert rfm_df.loc['CUST102', 'M_Debit_Std'] == 0.0
