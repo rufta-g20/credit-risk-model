@@ -1,13 +1,22 @@
-pandas==1.5.3  # Pinned for xverse compatibility
+# Core Data Science
+pandas==1.5.3
 numpy==1.23.5
-matplotlib 
-seaborn 
-jupyter
 scikit-learn
 xverse
-mlflow  
-pytest  
-scipy
+mlflow
+
+# API & Server
 fastapi
 uvicorn
+pydantic
+
+# Visualization & Utils
+matplotlib
+seaborn
+scipy
+
+# Testing & Quality (Feedback: Task 6 & CI)
+pytest
 black
+flake8
+safety

@@ -3,28 +3,34 @@ import numpy as np
 from datetime import datetime
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans  # Explicitly import KMeans for clustering
+from sklearn.preprocessing import StandardScaler, OneHotEncoder # Added OneHotEncoder
+from sklearn.cluster import KMeans
 from xverse.transformer import WOE
 import warnings
 
-# Suppress warnings for cleaner output during execution
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+"""
+BUSINESS LOGIC FOR PROXY TARGET:
+We designate the 'Least Engaged' cluster as High Risk (1). 
+In credit scoring, customers with high Recency (long time since last seen) 
+and low Frequency/Monetary value represent higher uncertainty and risk 
+as they lack a consistent repayment or transaction history.
+"""
 
 # --- GLOBAL CONSTANTS ---
 CUTOFF_DATE = datetime(2019, 2, 14)
-N_CLUSTERS = 3  # <-- UPDATED: Changed from 2 to 3 clusters for segmentation
-RANDOM_STATE = 42  # Ensures reproducible clustering (Instruction 2)
+N_CLUSTERS = 3 
+RANDOM_STATE = 42 
 
 # =========================================================================
 # 1. Custom Transformer: RFM Aggregation and Target Creation (Proxy)
 # =========================================================================
 
-
 class RFMAggregator(BaseEstimator, TransformerMixin):
     """
-    Groups data by CustomerId, calculates RFM metrics, and creates the Proxy Target
-    ('is_high_risk') using K-Means clustering (Task 4).
+    Groups data by CustomerId, calculates RFM metrics, extracts temporal features,
+    and creates the Proxy Target ('is_high_risk') using K-Means clustering.
     """
 
     def fit(self, X, y=None):
@@ -33,176 +39,112 @@ class RFMAggregator(BaseEstimator, TransformerMixin):
     def transform(self, X):
         df = X.copy()
 
-        # --- Data Cleaning & Feature Extraction ---
+        # --- 1. Data Cleaning & Temporal Feature Extraction (Feedback: Task 3) ---
         df["TransactionStartTime"] = pd.to_datetime(df["TransactionStartTime"])
-        df.drop(
-            columns=["CountryCode", "CurrencyCode", "Value"],
-            inplace=True,
-            errors="ignore",
-        )
         df["TransactionStartTime"] = df["TransactionStartTime"].dt.tz_localize(None)
+
+        # Explicitly derive temporal features as requested in feedback
+        df["TransactionHour"] = df["TransactionStartTime"].dt.hour
+        df["TransactionDay"] = df["TransactionStartTime"].dt.day
+        df["TransactionMonth"] = df["TransactionStartTime"].dt.month
+        df["TransactionYear"] = df["TransactionStartTime"].dt.year
+
+        df.drop(columns=["CountryCode", "CurrencyCode", "Value"], inplace=True, errors="ignore")
 
         # Calculate time difference for Recency
         df["Recency_Days"] = (CUTOFF_DATE - df["TransactionStartTime"]).dt.days
 
-        # Separate Debit (spending) and Credit (receiving) transactions
+        # Separate Debit and Credit transactions
         df["Debit_Amount"] = df["Amount"].apply(lambda x: abs(x) if x > 0 else 0)
         df["Credit_Amount"] = df["Amount"].apply(lambda x: abs(x) if x < 0 else 0)
 
-        # --- RFM Aggregation (Instruction 1) ---
+        # --- 2. RFM Aggregation ---
         rfm_df = df.groupby("CustomerId").agg(
-            # Monetary (Debit/Spending)
             M_Debit_Total=("Debit_Amount", "sum"),
             M_Debit_Mean=("Debit_Amount", "mean"),
             M_Debit_Std=("Debit_Amount", "std"),
-            # Frequency
             F_Count=("TransactionId", "count"),
-            # Recency (Min Days = Most Recent Transaction)
             R_Min_Days=("Recency_Days", "min"),
-            # Other features
-            Channel_Mode=(
-                "ChannelId",
-                lambda x: x.mode()[0] if not x.mode().empty else "Missing",
-            ),
-            Product_Mode=(
-                "ProductCategory",
-                lambda x: x.mode()[0] if not x.mode().empty else "Missing",
-            ),
+            # Capture temporal modes to keep them in the customer-level dataset
+            Hour_Mode=("TransactionHour", lambda x: x.mode()[0] if not x.mode().empty else 0),
+            Channel_Mode=("ChannelId", lambda x: x.mode()[0] if not x.mode().empty else "Missing"),
+            Product_Mode=("ProductCategory", lambda x: x.mode()[0] if not x.mode().empty else "Missing"),
         )
 
-        # Handle aggregation NaNs (single transactions have no std dev)
         rfm_df["M_Debit_Std"].fillna(0, inplace=True)
 
-        # --- K-Means Clustering and Target Assignment (Instructions 2 & 3) ---
-
-        # 1. Pre-process RFM features (Scale)
-        X_cluster = rfm_df[["R_Min_Days", "F_Count", "M_Debit_Total"]].fillna(0)
+        # --- 3. K-Means Clustering & Target Assignment (Feedback: Task 4 Robustness) ---
+        X_cluster = rfm_df[["R_Min_Days", "F_Count", "M_Debit_Total"]]
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X_cluster)
 
-        # 2. Cluster Customers into 3 groups (Instruction 2)
         kmeans = KMeans(n_clusters=N_CLUSTERS, random_state=RANDOM_STATE, n_init=10)
         rfm_df["Risk_Cluster"] = kmeans.fit_predict(X_scaled)
 
-        # 3. Analyze and Define High-Risk Label (Instruction 3)
-        # High Risk = Least Engaged: High Recency (R_Min_Days) AND Low Frequency (F_Count)
+        # Robustness check: Ensure clusters aren't empty
+        if rfm_df["Risk_Cluster"].nunique() < N_CLUSTERS:
+            warnings.warn(f"Clustering generated only {rfm_df['Risk_Cluster'].nunique()} clusters.")
+
+        # Business Logic: In Credit Risk, "Least Engaged" customers (High Recency, Low Frequency)
+        # often represent a high risk because there is less behavioral data to prove reliability,
+        # or they may be dormant users returning for a large, potentially fraudulent transaction.
         cluster_analysis = (
             rfm_df.groupby("Risk_Cluster")
-            .agg(
-                Avg_Recency=("R_Min_Days", "mean"),
-                Avg_Frequency=("F_Count", "mean"),
-                Avg_Monetary=("M_Debit_Total", "mean"),
-            )
+            .agg(Avg_Recency=("R_Min_Days", "mean"), Avg_Frequency=("F_Count", "mean"))
             .sort_values(by=["Avg_Recency", "Avg_Frequency"], ascending=[False, True])
-        )  # Sort by highest Recency (least engaged)
+        )
 
-        # The cluster with the highest average Recency is designated as the least engaged/High-Risk group (1).
         high_risk_cluster_id = cluster_analysis.index[0]
-
-        # 4. Create the final target variable (proxy)
-        rfm_df["is_high_risk"] = np.where(
-            rfm_df["Risk_Cluster"] == high_risk_cluster_id, 1, 0
-        )  # Final column name is 'is_high_risk'
-
-        # Drop the intermediate cluster ID
+        rfm_df["is_high_risk"] = np.where(rfm_df["Risk_Cluster"] == high_risk_cluster_id, 1, 0)
         rfm_df.drop(columns=["Risk_Cluster"], inplace=True)
 
         return rfm_df
 
-
 # =========================================================================
-# 2. Custom Transformer: Weight of Evidence (WoE)
+# 2. Custom Transformer: Mixed Encoding (WoE + One-Hot) (Feedback: Task 3)
 # =========================================================================
 
-
-class WOETransformer(BaseEstimator, TransformerMixin):
+class FeatureEncoder(BaseEstimator, TransformerMixin):
     """
-    Applies WoE transformation to specified features using the proxy target.
+    Applies WoE to numerical, temporal, and high-cardinality features 
+    while using One-Hot Encoding for low-cardinality categorical features.
     """
-
-    def __init__(self, features_to_woe=None):
-        self.features_to_woe = features_to_woe
+    def __init__(self):
         self.woe_fit = WOE()
+        self.ohe = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+        # Channel_Mode is OHE; Product_Mode and Hour_Mode will be WoE
+        self.ohe_cols = ["Channel_Mode"] 
 
     def fit(self, X, y=None):
-        # Identify features dynamically, excluding the target column
-        self.features_to_woe = [col for col in X.columns if col not in ["is_high_risk"]]
-
-        # xverse WOE requires the target (y) to be passed separately
-        # X['is_high_risk'] is the target created in the previous step
-        self.woe_fit.fit(X[self.features_to_woe], X["is_high_risk"])
+        # 1. Fit OneHotEncoder for categorical features
+        self.ohe.fit(X[self.ohe_cols])
+        
+        # 2. Identify columns for WoE (Everything except OHE cols and the target)
+        # This explicitly includes Hour_Mode, R_Min_Days, F_Count, etc.
+        self.woe_cols = [c for c in X.columns if c not in self.ohe_cols and c != "is_high_risk"]
+        
+        # 3. Fit WoE
+        self.woe_fit.fit(X[self.woe_cols], X["is_high_risk"])
         return self
 
     def transform(self, X):
-        X_feats = X.drop(
-            columns=["is_high_risk"], errors="ignore"
-        )  # Drop target before transformation
-
-        X_woe = self.woe_fit.transform(X_feats[self.features_to_woe])
+        X_transformed = X.copy()
+        
+        # 1. Apply OHE transformation
+        ohe_features = self.ohe.transform(X_transformed[self.ohe_cols])
+        ohe_df = pd.DataFrame(
+            ohe_features, 
+            index=X_transformed.index, 
+            columns=self.ohe.get_feature_names_out(self.ohe_cols)
+        )
+        
+        # 2. Apply WoE transformation
+        # This turns raw values (like Hour 14) into a risk-weighted score
+        X_woe = self.woe_fit.transform(X_transformed[self.woe_cols])
         X_woe.columns = [f"{col}_WOE" for col in X_woe.columns]
-
-        X_transformed = X.merge(X_woe, left_index=True, right_index=True, how="left")
-
-        # Drop the original features now that we have the WoE version
-        X_transformed.drop(columns=self.features_to_woe, inplace=True, errors="ignore")
-
-        return X_transformed
-
-
-# =========================================================================
-# 3. Full Feature Engineering Pipeline
-# =========================================================================
-
-
-def create_full_pipeline():
-    """
-    Creates and returns the complete scikit-learn pipeline for data processing.
-    """
-
-    # STEP A: RFM Aggregation and Proxy Target Creation (Task 4)
-    rfm_step = ("rfm_aggregator", RFMAggregator())
-
-    # STEP B: WoE Transformation (Task 3)
-    woe_step = ("woe_transformer", WOETransformer())
-
-    # The full pipeline first aggregates the raw data and then transforms the features using WoE.
-    full_pipeline = Pipeline(steps=[rfm_step, woe_step])
-
-    return full_pipeline
-
-
-# =========================================================================
-# 4. Usage Example (for testing/debugging and target analysis)
-# =========================================================================
-
-if __name__ == "__main__":
-    print("Running proxy target and feature engineering pipeline test...")
-
-    try:
-        raw_df = pd.read_csv("../data/raw/data.csv")
-    except FileNotFoundError:
-        print("Error: data.csv not found. Cannot run test.")
-        exit()
-
-    pipeline = create_full_pipeline()
-
-    # Fit and Transform the data
-    transformed_data = pipeline.fit_transform(raw_df)
-
-    # Separate features (X) and the proxy target (y)
-    X_processed = transformed_data.drop(columns=["is_high_risk"])
-    y_target = transformed_data["is_high_risk"]
-
-    print("\n--- Processed Feature Set (X) ---")
-    print(X_processed.head())
-    print(f"\nTotal Customers (Rows): {X_processed.shape[0]}")
-
-    # Check the newly created target balance (Deliverable proof for Task 4)
-    print("\n--- Proxy Target (is_high_risk) Distribution ---")
-    print(y_target.value_counts(normalize=True))
-
-    print(f"\nTarget Variable Name: is_high_risk")
-    print(f"High-Risk (1) Proportion: {y_target.mean():.2%}")
-    print(
-        "Task 4: Proxy Target Engineering is complete. Data is ready for model training."
-    )
+        
+        # 3. Combine: [Target] + [WoE Features] + [One-Hot Features]
+        # We keep 'is_high_risk' for training, but it will be dropped in the final X_train
+        final_df = pd.concat([X_transformed[["is_high_risk"]], X_woe, ohe_df], axis=1)
+        
+        return final_df
