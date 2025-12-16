@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
 # 3. Explicitly install compatible versions BEFORE the rest of requirements
 # This ensures xverse doesn't try to pull in a newer, breaking Pandas version
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir pandas==1.5.3 numpy<2.0.0 xverse
+    pip install --no-cache-dir "pandas==1.5.3" "numpy==1.23.5" "xverse==1.0.5"
 
 # 4. Install the remaining dependencies
 COPY requirements.txt .

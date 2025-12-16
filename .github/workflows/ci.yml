@@ -26,8 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # FIX: Force install the compatible pair first to avoid conflicts
-          pip install pandas==1.5.3 numpy<2.0.0 xverse
+          pip install "pandas==1.5.3" "numpy==1.23.5" "xverse==1.0.5"
           pip install -r requirements.txt
           pip install black flake8 safety pytest
 
