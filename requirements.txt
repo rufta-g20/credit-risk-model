@@ -2,7 +2,7 @@
 pandas==1.5.3
 numpy==1.23.5
 scikit-learn
-xverse
+xverse==0.4.4
 mlflow
 
 # API & Server

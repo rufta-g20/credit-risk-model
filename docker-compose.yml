@@ -11,12 +11,20 @@ services:
     volumes:
       # Map the local mlruns folder so the API can load the trained models
       - ./mlruns:/app/mlruns
+      # ADDITION: Map your data or src folder if you want 'Hot Reloading' during development
+      # - ./src:/app/src 
     environment:
-      # Explicitly tell the container where the MLflow logs are
-      - MLFLOW_TRACKING_URI=/app/mlruns
+      - MLFLOW_TRACKING_URI=file:///app/mlruns
       - LOG_LEVEL=info
+      - PYTHONUNBUFFERED=1
     # Ensures the service stays up unless you manually stop it
     restart: unless-stopped
+    # ADDITION: Explicitly set the healthcheck if not defined in Dockerfile
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   default:
