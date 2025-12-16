@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - task-* # CI will now run on your task-3, task-4 branches
   pull_request:
     branches:
       - main
@@ -20,19 +21,27 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          # Removed cache: 'pip' to force fresh install of dependencies
-          # which ensures pandas==1.5.3 is installed correctly.
 
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install black flake8 safety pytest  # Ensure CI tools are installed
 
-      - name: Run Code Linter (Black)
+      - name: Run Formatter (Black)
+        run: black --check src/ tests/
+
+      - name: Run Linter (Flake8)
+        # Flake8 catches logic issues that Black ignores
         run: |
-          # Use black --check to only check for issues without modifying files
-          black --check src/ tests/
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings (standard for first-time CI setup)
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Security scan dependencies
+        # Feedback Requirement: Task 6 security/dependency scanning
+        run: safety check -r requirements.txt
 
       - name: Run Unit Tests (Pytest)
-        run: |
-          # Use the pytest command
-          python -m pytest
+        run: python -m pytest tests/

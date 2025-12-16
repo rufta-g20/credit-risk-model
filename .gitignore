@@ -1,9 +1,22 @@
-__pychach__/
-*.pyc
-.venv
-venv/
-data/raw/
-data/processed/
-.env
-.ipynb_checkpoints/
+# Data
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# MLflow
 mlruns/
+mlruns.db
+
+# Environments
+venv/
+.venv/
+.env
+
+# Python caches
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/

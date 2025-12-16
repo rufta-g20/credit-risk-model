@@ -9,7 +9,15 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Optional: Keep the logs/mlruns mapped for debugging, but not strictly required
-      - ./src:/app/src
+      # Map the local mlruns folder so the API can load the trained models
       - ./mlruns:/app/mlruns
+    environment:
+      # Explicitly tell the container where the MLflow logs are
+      - MLFLOW_TRACKING_URI=/app/mlruns
+      - LOG_LEVEL=info
+    # Ensures the service stays up unless you manually stop it
     restart: unless-stopped
+
+networks:
+  default:
+    name: credit_risk_network

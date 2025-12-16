@@ -1,127 +1,84 @@
 import pandas as pd
 import numpy as np
 import pytest
-from src.data_processing import create_full_pipeline
-from src.data_processing import RFMAggregator
+from src.data_processing import create_full_pipeline, RFMAggregator
 
-
-# Define a fixture with a larger, more diverse dataset (10 customers, 30 transactions)
 @pytest.fixture
 def dummy_data():
     """Creates a larger, more diverse transaction DataFrame for robust testing."""
     np.random.seed(42)
-    num_transactions = 30
+    num_transactions = 50  # Increased for better cluster stability
 
     data = {
         "TransactionId": [f"T{i}" for i in range(num_transactions)],
         "BatchId": ["B1"] * num_transactions,
-        "AccountId": [f"A{i}" for i in np.random.randint(1, 11, num_transactions)],
-        "SubscriptionId": [f"S{i}" for i in np.random.randint(1, 11, num_transactions)],
-        "CustomerId": [
-            f"CUST{i}" for i in np.random.randint(1, 11, num_transactions)
-        ],  # 10 unique customers
+        "CustomerId": [f"CUST{i}" for i in np.random.randint(1, 15, num_transactions)],
         "CurrencyCode": ["UGX"] * num_transactions,
         "CountryCode": [256] * num_transactions,
-        "ProviderId": np.random.choice(
-            [f"P{i}" for i in range(1, 5)], num_transactions
-        ),
-        "ProductId": np.random.choice(
-            [f"PD{i}" for i in range(1, 4)], num_transactions
-        ),
-        "ProductCategory": np.random.choice(
-            ["CAT_A", "CAT_B", "CAT_C"], num_transactions
-        ),
-        "ChannelId": np.random.choice(["Web", "Mobile"], num_transactions),
-        # Ensure diverse amounts (positive and negative)
-        "Amount": np.random.choice(
-            [1000, -500, 2000, 100, -100, 50, 500, 200, 300, 1500, 5000, -1000],
-            num_transactions,
-        ),
-        "Value": np.abs(
-            np.random.choice(
-                [1000, -500, 2000, 100, -100, 50, 500, 200, 300, 1500, 5000, -1000],
-                num_transactions,
-            )
-        ),
-        # Simulate transaction times spanning the 3-month window
-        "TransactionStartTime": pd.to_datetime("2018-11-15 00:00:00")
-        + pd.to_timedelta(np.random.randint(0, 90, num_transactions), unit="D"),
-        "PricingStrategy": np.random.randint(0, 4, num_transactions),
-        "FraudResult": np.random.choice([0, 1], num_transactions, p=[0.9, 0.1]),
+        "ProviderId": ["P1"] * num_transactions,
+        "ProductId": ["PD1"] * num_transactions,
+        "ProductCategory": np.random.choice(["airtime", "financial_services"], num_transactions),
+        "ChannelId": np.random.choice(["ChannelId_2", "ChannelId_3"], num_transactions),
+        "Amount": np.random.choice([1000, -500, 5000, -1000, 200], num_transactions),
+        "Value": [1000] * num_transactions,
+        "TransactionStartTime": pd.to_datetime("2018-11-15 12:00:00") 
+                                + pd.to_timedelta(np.random.randint(0, 90, num_transactions), unit="D"),
+        "PricingStrategy": [2] * num_transactions,
+        "FraudResult": [0] * num_transactions,
     }
     return pd.DataFrame(data)
 
-
 def test_pipeline_output_shape(dummy_data):
-    """Test 1: Check that the pipeline outputs one row per unique customer."""
-
-    # Arrange
+    """Test: Check that the pipeline outputs one row per unique customer."""
     pipeline = create_full_pipeline()
     expected_rows = dummy_data["CustomerId"].nunique()
-
-    # Act
     processed_df = pipeline.fit_transform(dummy_data)
+    
+    assert processed_df.shape[0] == expected_rows
 
-    # Assert
-    assert (
-        processed_df.shape[0] == expected_rows
-    ), f"Expected {expected_rows} rows, got {processed_df.shape[0]} rows."
-
-
-def test_target_column_existence(dummy_data):
-    """Test 2: Check that the proxy target column 'is_high_risk' is created."""
-
-    # Arrange
-    pipeline = create_full_pipeline()
-    required_column = "is_high_risk"
-
-    # Act
-    processed_df = pipeline.fit_transform(dummy_data)
-
-    # Assert
-    assert (
-        required_column in processed_df.columns
-    ), f"Expected column '{required_column}' not found in processed data."
-
-
-def test_rfm_aggregator_handles_single_transactions():
-    """
-    Test for code robustness: Ensures customers with only one transaction
-    correctly get M_Debit_Std (Standard Deviation) imputed to 0, which
-    is a key step in data preparation.
-    """
-    # Arrange: Mock data where CUST102 has only one transaction.
-    # Must now include CUST103 to satisfy n_clusters=3 constraint.
-    mock_data = pd.DataFrame(
-        {
-            "TransactionId": [1, 2, 3, 4],  # Added transaction 4
-            "CustomerId": [
-                "CUST101",
-                "CUST102",
-                "CUST101",
-                "CUST103",  # New unique customer
-            ],
-            "TransactionStartTime": [
-                "2019-02-13 12:00:00",
-                "2019-02-13 12:00:00",
-                "2019-02-12 12:00:00",
-                "2019-02-11 12:00:00",  # New transaction time
-            ],
-            "Amount": [500.0, 1000.0, 100.0, 2000.0],  # Added amount for CUST103
-            "ChannelId": ["APP", "WEB", "APP", "WEB"],
-            "ProductCategory": ["P1", "P2", "P1", "P3"],
-        }
-    )
-
-    # ... rest of the test code remains the same ...
+def test_temporal_feature_extraction(dummy_data):
+    """Test: Verify that temporal features (Hour_Mode) are derived during transformation."""
     aggregator = RFMAggregator()
+    rfm_df = aggregator.transform(dummy_data)
+    
+    assert "Hour_Mode" in rfm_df.columns
+    assert rfm_df["Hour_Mode"].min() >= 0
+    assert rfm_df["Hour_Mode"].max() <= 23
+
+def test_encoding_columns_presence(dummy_data):
+    """Test: Ensure both WoE and One-Hot Encoded columns exist after pipeline."""
+    pipeline = create_full_pipeline()
+    processed_df = pipeline.fit_transform(dummy_data)
+    
+    # Check for WoE columns (appended with _WOE)
+    woe_cols = [col for col in processed_df.columns if "_WOE" in col]
+    assert len(woe_cols) > 0
+    
+    # Check for One-Hot Encoded columns (prefixed with Channel_Mode_)
+    ohe_cols = [col for col in processed_df.columns if "Channel_Mode_" in col]
+    assert len(ohe_cols) > 0
+
+def test_target_column_logic(dummy_data):
+    """Test: Verify that is_high_risk is binary and present."""
+    pipeline = create_full_pipeline()
+    processed_df = pipeline.fit_transform(dummy_data)
+    
+    assert "is_high_risk" in processed_df.columns
+    assert set(processed_df["is_high_risk"].unique()).issubset({0, 1})
+
+def test_rfm_aggregator_robustness():
+    """Test: Ensures the aggregator handles minimal unique customers for 3-cluster KMeans."""
+    mock_data = pd.DataFrame({
+        "TransactionId": [1, 2, 3],
+        "CustomerId": ["C1", "C2", "C3"], # Exactly 3 to satisfy N_CLUSTERS
+        "TransactionStartTime": ["2019-02-13 12:00:00"] * 3,
+        "Amount": [100.0, 200.0, 300.0],
+        "ChannelId": ["A", "B", "A"],
+        "ProductCategory": ["P1", "P1", "P2"]
+    })
+    
+    aggregator = RFMAggregator()
+    # Should not raise ValueError even with small sample size
     rfm_df = aggregator.transform(mock_data)
-
-    # Check 1: Shape is 3 unique customers
     assert rfm_df.shape[0] == 3
-
-    # Check 2: M_Debit_Std for single transaction customers is 0.0
-    assert rfm_df.loc["CUST102", "M_Debit_Std"] == 0.0
-    assert (
-        rfm_df.loc["CUST103", "M_Debit_Std"] == 0.0
-    )  # CUST103 is also a single-transaction customer
+    assert rfm_df["M_Debit_Std"].iloc[0] == 0.0
