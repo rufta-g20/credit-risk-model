@@ -71,33 +71,31 @@ def health_check():
 # --- PREDICTION ENDPOINT ---
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_risk(customer_data: CustomerFeatures):
-    logger.info(f"Prediction request received for Customer.")
+    logger.info("Prediction request received.")
 
     if model is None:
         raise HTTPException(status_code=503, detail="Model unavailable")
-
+    
     try:
-        # 1. Convert Pydantic to DataFrame
-        # IMPORTANT: Use the RAW feature names the pipeline expects
-        input_df = pd.DataFrame([customer_data.dict()])
+        # 1. Convert Pydantic request directly to a DataFrame
+        # The column names match what the 'final_pipeline' expects
+        raw_input = pd.DataFrame([customer_data.dict()])
 
-        # 2. TRANSFORM the raw data
-        # If you saved your pipeline separately, load it here. 
-        # If your MLflow model is a Pipeline object, it handles this.
-        # Given your error, the model is likely just the Tree, so we transform manually:
-        
-        # Note: In a production setup, you'd load 'full_pipeline.pkl' here
-        # For now, we use the model's internal transformation if it's a pipeline
-        prediction_prob = model.predict(input_df) 
+        # 2. Inference
+        # The loaded MLflow model IS the pipeline, so it does the WoE/OHE internally
+        if hasattr(model, "predict_proba"):
+            risk_prob = float(model.predict_proba(raw_input)[0][1])
+        else:
+            # Fallback for models without predict_proba
+            risk_prob = float(model.predict(raw_input)[0])
 
-        # 3. Handle the logic based on model output
-        risk_prob = float(prediction_prob[0])
-        threshold = 0.5
-        risk_label = "High Risk" if risk_prob >= threshold else "Low Risk"
+        risk_label = "High Risk" if risk_prob >= 0.5 else "Low Risk"
 
-        return PredictionResponse(risk_probability=risk_prob, risk_label=risk_label)
-
+        return PredictionResponse(
+            risk_probability=round(risk_prob, 4), 
+            risk_label=risk_label
+        )
+    
     except Exception as e:
         logger.exception(f"Inference Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-    
+        raise HTTPException(status_code=500, detail="Check if input features match training columns.")
