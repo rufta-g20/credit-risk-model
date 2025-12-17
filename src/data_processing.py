@@ -148,3 +148,11 @@ class FeatureEncoder(BaseEstimator, TransformerMixin):
         final_df = pd.concat([X_transformed[["is_high_risk"]], X_woe, ohe_df], axis=1)
         
         return final_df
+    
+    def create_full_pipeline():
+        # Factory function to create the processing pipeline.
+        
+        return Pipeline([
+            ('aggregator', RFMAggregator()),
+            ('encoder', FeatureEncoder())
+        ])

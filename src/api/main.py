@@ -67,58 +67,37 @@ def health_check():
         "stage": STAGE
     }
 
+
 # --- PREDICTION ENDPOINT ---
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_risk(customer_data: CustomerFeatures):
-    """
-    Accepts customer features, performs inference, and returns risk assessment.
-    
-    Includes input range validation via Pydantic and logic for 
-    probability-based classification.
-    """
     logger.info(f"Prediction request received for Customer.")
 
-    # 1. Ensure model is available
     if model is None:
-        logger.error("Attempted prediction while model was None.")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Model is currently loading or unavailable.",
-        )
+        raise HTTPException(status_code=503, detail="Model unavailable")
 
     try:
-        # 2. Convert Pydantic model to DataFrame
-        # The model expects the same columns used in training (Task 3/4 output)
-        input_data = pd.DataFrame([customer_data.dict()])
+        # 1. Convert Pydantic to DataFrame
+        # IMPORTANT: Use the RAW feature names the pipeline expects
+        input_df = pd.DataFrame([customer_data.dict()])
 
-        # 3. Perform Inference
-        # Note: If your model was logged via mlflow.sklearn, it might support predict_proba
-        # We handle both standard predict and proba if available
-        if hasattr(model._model_impl, "predict_proba"):
-             # Returns [prob_class_0, prob_class_1]
-            probabilities = model._model_impl.predict_proba(input_data)
-            risk_prob = float(probabilities[0][1])
-        else:
-            # Fallback for models that don't directly expose proba through pyfunc wrapper
-            # Some pyfunc models return the class; you may need to adjust based on your specific model
-            prediction = model.predict(input_data)
-            risk_prob = float(prediction[0]) # Assuming the model returns a probability directly
+        # 2. TRANSFORM the raw data
+        # If you saved your pipeline separately, load it here. 
+        # If your MLflow model is a Pipeline object, it handles this.
+        # Given your error, the model is likely just the Tree, so we transform manually:
+        
+        # Note: In a production setup, you'd load 'full_pipeline.pkl' here
+        # For now, we use the model's internal transformation if it's a pipeline
+        prediction_prob = model.predict(input_df) 
 
-        # 4. Apply Business Threshold (Feedback: Task 4 context)
-        # Default 0.5 threshold to classify based on proxy target 'is_high_risk'
+        # 3. Handle the logic based on model output
+        risk_prob = float(prediction_prob[0])
         threshold = 0.5
         risk_label = "High Risk" if risk_prob >= threshold else "Low Risk"
 
-        logger.info(f"Inference complete: Score={risk_prob:.4f}, Result={risk_label}")
-
-        return PredictionResponse(
-            risk_probability=risk_prob, 
-            risk_label=risk_label
-        )
+        return PredictionResponse(risk_probability=risk_prob, risk_label=risk_label)
 
     except Exception as e:
         logger.exception(f"Inference Error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal model error during prediction: {str(e)}",
-        )
+        raise HTTPException(status_code=500, detail=str(e))
+    
