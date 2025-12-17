@@ -28,9 +28,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "pandas==1.5.3" "numpy==1.23.5" "xverse==1.0.5"
-          pip install -r requirements.txt
-          pip install black flake8 safety pytest
+          pip install pandas==1.5.3 numpy==1.23.5 xverse==1.0.5 scikit-learn==1.3.2 pytest
+          pip install black flake8 safety 
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Run Formatter (Black)
         # Using "continue-on-error" allows you to see the test results 
