@@ -1,21 +1,19 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
-from pydantic import BaseModel, Field
+from typing import Optional, Dict
 
 class CustomerFeatures(BaseModel):
-    """Features representing a single customer's data before encoding."""
-    R_Min_Days: float
-    F_Count: float
-    M_Debit_Total: float
-    M_Debit_Mean: float
-    M_Debit_Std: float
-    # New Temporal Features (derived from the mode of customer transactions)
-    Hour_Mode: int = Field(..., ge=0, le=23, description="Most frequent hour of transaction")
-    Channel_Mode: str = Field(..., description="Most frequent ChannelId used.")
-    Product_Mode: str = Field(..., description="Most frequent ProductCategory used.")
+    """Features representing a single customer's aggregated data."""
+    R_Min_Days: float = Field(..., ge=0, description="Recency in days")
+    F_Count: float = Field(..., ge=1, description="Frequency of transactions")
+    M_Debit_Total: float = Field(..., ge=0, description="Total monetary value of debits")
+    M_Debit_Mean: float = Field(..., ge=0)
+    M_Debit_Std: float = Field(..., ge=0)
+    Hour_Mode: int = Field(..., ge=0, le=23)
+    Channel_Mode: str = Field(..., description="E.g., ChannelId_3")
+    Product_Mode: str = Field(..., description="E.g., airtime")
 
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "R_Min_Days": 5.0,
                 "F_Count": 10.0,
@@ -27,15 +25,14 @@ class CustomerFeatures(BaseModel):
                 "Product_Mode": "airtime",
             }
         }
+    }
 
-# Define the response structure for the /predict endpoint
 class PredictionResponse(BaseModel):
-    """The risk probability returned by the model."""
-
-    risk_probability: float = Field(
-        ...,
-        description="The probability (0 to 1) that the customer is high risk (Class 1).",
+    """Production-grade response with placeholder for SHAP justifications."""
+    risk_probability: float
+    risk_label: str
+    # SHAP feature importance mapping (to be populated in Friday's task)
+    justification: Optional[Dict[str, float]] = Field(
+        None, description="Feature importance scores justifying the prediction."
     )
-    risk_label: str = Field(
-        ..., description="The classification label (High Risk or Low Risk)."
-    )
+    status: str = "success"

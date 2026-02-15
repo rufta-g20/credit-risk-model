@@ -14,8 +14,9 @@ pydantic
 matplotlib
 seaborn
 scipy
+shap
 
-# Testing & Quality (Feedback: Task 6 & CI)
+# Testing & Quality 
 pytest
 black
 flake8
