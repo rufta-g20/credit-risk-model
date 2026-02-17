@@ -7,6 +7,7 @@ data/processed/*
 # MLflow
 mlruns/
 mlruns.db
+mlflow.db
 
 # Environments
 venv/
