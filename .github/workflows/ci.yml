@@ -4,13 +4,13 @@ on:
   push:
     branches:
       - main
-      - task-*
+      - 'task-*'
   pull_request:
     branches:
       - main
 
 jobs:
-  build-and-test:
+  quality-assurance:
     runs-on: ubuntu-latest
     env:
       MLFLOW_TRACKING_URI: "sqlite:///mlflow.db"
@@ -22,31 +22,33 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          # CHANGE: Use 3.9 or 3.10 for better compatibility with xverse
-          python-version: '3.9' 
+          python-version: '3.11' 
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas==1.5.3 numpy==1.23.5 xverse==1.0.5 scikit-learn==1.3.2 pytest
-          pip install black flake8 safety 
+          # Install core requirements first
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Ensure dev tools are present
+          pip install black flake8 safety pytest httpx
 
       - name: Run Formatter (Black)
-        # Using "continue-on-error" allows you to see the test results 
-        # even if your formatting isn't perfect yet
         run: black --check src/ tests/
         continue-on-error: true 
 
       - name: Run Linter (Flake8)
         run: |
+          # Stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Security scan dependencies
-        # Note: If 'safety' fails due to the old pandas version, 
-        # use '|| true' to keep the pipeline green while documenting the risk
-        run: safety check -r requirements.txt || true
+        # Documenting the risk: 'safety' might flag older pandas/numpy required by xverse
+        run: safety check || true
 
       - name: Run Unit Tests (Pytest)
-        run: python -m pytest tests/
+        run: |
+          # Setting PYTHONPATH ensures pytest can find the 'src' directory
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          python -m pytest tests/
