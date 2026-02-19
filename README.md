@@ -96,7 +96,7 @@ pip install -r requirements.txt
 
 Check out the full system walkthrough (API + MLflow + Dashboard) below:
 
-[https://github.com/rufta-g20/credit-risk-model/blob/main/assets/demo.mp4](https://www.google.com/search?q=https://github.com/rufta-g20/credit-risk-model/blob/main/assets/demo.mp4)
+[https://drive.google.com/file/d/1mL3oBfChzLgG8l9KoJ4UOW5bKOCKegRd/view?usp=drivesdk](https://drive.google.com/file/d/1mL3oBfChzLgG8l9KoJ4UOW5bKOCKegRd/view?usp=drivesdk)
 
 ---
 
